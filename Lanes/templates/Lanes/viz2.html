@@ -1,0 +1,913 @@
+{% block content %}
+<script>
+  // ____________________________________________________________________________________________
+  //  ################################### VARIABLE DEFINITIONS ##################################
+  // ____________________________________________________________________________________________
+
+  //------------LANE VARIABLES------------
+  // initial lane y pos
+  let start_y = 5;
+  //incriments up every time a lane is drawn
+  let lane_y = start_y;
+  // amount of space between each lane
+  let lane_gap = 5;
+  // height of each lane
+  var lane_height = 25;
+  // max number of lanes that can fit on the screen
+  var max_lanes;
+  // which lane is at the top of the canvas
+  var top_lane = 0;
+
+
+  //------------CANVAS VARIABLES------------
+  // width of the canvas_right
+  // recalculated every time the window is resized
+  var canvas_width;
+  // variable to store the canvas object
+  var canvas;
+  // x cord. for the right side of the canvas
+  // used to lock buttons next to the canvas
+  // recalculated every time the window is resized
+  var canvas_right;
+
+  //------------OBJECT ARRAYS------------
+  // Holds all JSON task objects
+  var tasks;
+  // Holds all created lane objects
+  lanes = [];
+  // Holds all created job objects
+  jobs = [];
+  // Holds all created job time window objects
+  windows = [];
+  // Holds all created job tooltip objects
+  tooltips = [];
+
+  removed_tasks = [];
+
+  //------------BUTTON VARIABLES------------
+  var select_text;
+  // holds the "weekly view" btn
+  var weekSelect;
+  // holds the "Monthly view" btn
+  var monthSelect;
+  // holds the "Yearly view" btn
+  var yearSelect;
+  // holds the "View All" btn
+  var allSelect;
+
+  var period_text;
+  // holds the "<" btn
+  var prev_period;
+  // holds the ">" btn
+  var next_period;
+  // holds the "Search Task" input Box
+  var task_text;
+  var task_input;
+  // holds the "Search Task" btn
+  var task_btn;
+  // holds the "Search Lane" dropdown Box
+  var lane_text
+  var lane_input;
+  // holds the "Search Lane" btn
+  var lane_btn;
+
+  var height_slider;
+
+  var width_slider;
+
+
+
+  //------------TIME SCALE VARIABLES------------
+  // Determines how much to scale each task based on the selected time window
+  var task_scale;
+  // time window
+  var time_range = [0, 500];
+  // length of the time window;
+  var range_len = 500;
+
+  //------------MISC. VARIABLES------------
+  // is there a task being dragged right now
+  var task_dragging = false;
+  var dragging_id;
+  var temp_task;
+  var temp_window;
+  var temp_tooltip;
+
+
+  // ____________________________________________________________________________________________
+  // ##################################### MAIN P5 FUNCTIONS ####################################
+  // ____________________________________________________________________________________________
+
+  // function is called once before the canvas is drawn
+  // retreives the taskJSON file from the server
+  function preload() {
+    // Get the most recent earthquake in the database
+    var url =
+      'tasksJSON/';
+    tasks = loadJSON(url);
+  }
+
+  // function is called once to setup the canvas
+  function setup() {
+    max_lanes = (windowHeight - 110 - lane_gap) / (lane_gap + lane_height) | 0;
+
+    canvas_width = windowWidth * .75;
+
+    getHeight();
+
+    canvas = createCanvas(canvas_width, canvas_height);
+    centerCanvas();
+
+    // Create ALl The Controll Buttons:
+    weekSelect = createButton('Weekly View');
+    weekSelect.position(canvas_right + 20, 110);
+    weekSelect.style('width', '120px');
+    weekSelect.style('height', '30px');
+    weekSelect.mousePressed(weekScale);
+
+    monthSelect = createButton('Monthly View');
+    monthSelect.position(canvas_right + 20, 140);
+    monthSelect.style('width', '120px');
+    monthSelect.style('height', '30px');
+    monthSelect.mousePressed(monthScale);
+
+    yearSelect = createButton('Yearly View');
+    yearSelect.position(canvas_right + 20, 170);
+    yearSelect.style('width', '120px');
+    yearSelect.style('height', '30px');
+    yearSelect.mousePressed(yearScale);
+
+    allSelect = createButton('View All');
+    allSelect.position(canvas_right + 20, 200);
+    allSelect.style('width', '120px');
+    allSelect.style('height', '30px');
+    allSelect.mousePressed(fullScale);
+
+
+    prev_period = createButton('prev.');
+    prev_period.position(canvas_right + 20, 230);
+    prev_period.style('width', '60px')
+    prev_period.style('height', '30px');
+    prev_period.mousePressed(prevPeriod);
+
+    next_period = createButton('next');
+    next_period.position(canvas_right + 80, 230);
+    next_period.style('width', '60px')
+    next_period.style('height', '30px');
+    next_period.mousePressed(nextPeriod);
+
+    task_text = createP('Task Search:')
+    task_text.position(canvas_right + 20, 270)
+
+    task_input = createInput(' ');
+    task_input.position(canvas_right + 20, 290);
+    task_input.style('width', '40px')
+    task_input.style('height', '30px');
+
+    task_btn = createButton("Find Task");
+    task_btn.position(canvas_right + 60, 290)
+    task_btn.style('width', '80px')
+    task_btn.style('height', '30px')
+    task_btn.mousePressed(findTask);
+
+
+    lane_text = createP("Lane Search:")
+    lane_text.position(canvas_right + 20, 330)
+
+    lane_input = createSelect();
+    lane_input.position(canvas_right + 20, 350);
+    lane_input.style('width', '120px');
+    lane_input.style('height', '30px')
+    lane_input.changed(findLane);
+
+    height_slider = createSlider(1,75,25,1);
+    height_slider.position(canvas_right + 20, 380)
+
+    width_slider = createSlider(0,500,500,1);
+    width_slider.position(canvas_right+20, 410);
+
+
+    // Create all the Lanes:
+    for (i = 0; i < num_lanes; i++) {
+      lanes[i] = new Lane(i + 1, lane_y);
+      lane_input.option(`Lane ${i+1}`, i)
+      lane_y = lane_y + lane_height + lane_gap;
+    }
+
+    // Create all the jobs with windows and tooltips
+    for (i = 0; i < Object.keys(tasks).length; i++) {
+      jobs[i] = new Job(tasks[i], i);
+      windows[i] = new timewindow(tasks[i])
+      tooltips[i] = new tooltip(tasks[i])
+    }
+  }
+
+
+  // Function is called in a loop to update the Canvas
+  function draw() {
+    range_len = time_range[1] - time_range[0];
+    task_scale = canvas_width / range_len;
+
+    // Sets The Canvas Background Color:
+    canvas.background('#284e8c');
+
+    // Draws All the Lanes:
+    for (i = 0; i < num_lanes; i++) {
+      lanes[i].show();
+      lanes[i].mouseOn();
+
+      if (lanes[i].y == start_y) {
+        top_lane = i;
+      }
+    }
+
+    // Draws ALl the Jobs:
+    for (i = 0; i < jobs.length; i++) {
+      jobs[i].show();
+    }
+
+    // Detects if the mouse is over a jobs to display the window and tooltip
+    // IMPORTANT: +this CAN NOT go in the previous for loop
+    //            +All lanes have to be drawn first otherwise some lanes will
+    //                appear on top of the time window and tooltips
+    for (i = 0; i < jobs.length; i++) {
+      jobs[i].mouseOn()
+    }
+
+    // handles dragging of a task
+    for (i = 0; i < lanes.length; i++) {
+      for (j = 0; j < jobs.length; j++) {
+        if (jobs[j].dragging && lanes[i].mouseover){
+          windows[j].show();
+          jobs[j].show();
+          tooltips[j].show();
+
+          jobs[j].y = lanes[i].y;
+          windows[j].y = lanes[i].y;
+          tooltips[j].y = lanes[i].y;
+
+          var window_start = windows[j].win_start;
+          var window_end = window_start + (windows[j].win_end - windows[j].win_start)
+
+          jobs[j].x = (mouseX + jobs[j].xoff) / task_scale;
+
+          // keep the task in the time window
+          if (jobs[j].x >= window_start) {
+            if (jobs[j].x + jobs[j].w > window_end){
+              jobs[j].x = window_end - (jobs[j].w)
+            }
+          }
+          else {
+            jobs[j].x = window_start
+          }
+
+          jobs[j].x = jobs[j].x |0;
+          tooltips[j].start = jobs[j].x;
+          tooltips[j].end = jobs[j].x + jobs[j].w;
+          tooltips[j].resource = i+1;
+
+        }
+      }
+    }
+
+    // Makes sure you don't scroll too far
+    boundScroll();
+  }
+
+  // Check to see if the browser window has been resized
+  // resizes/ repositions the canvas and btns
+  function windowResized() {
+    var temp_lane = top_lane;
+
+    max_lanes = (windowHeight - 110 - lane_gap) / (lane_gap + lane_height) | 0;
+
+    canvas_width = windowWidth * .75;
+
+    getHeight();
+
+    // Lanes also have to be cleared and recreated
+    // This makes sure they have the same width as the new canvas
+
+    for (i=0;i<num_lanes;i++){
+      lanes[i].label.remove()
+    }
+    lanes = [];
+    lane_y = start_y;
+
+
+    for (i = 0; i < num_lanes; i++) {
+      lanes[i] = new Lane(i + 1, lane_y);
+      lane_y = lane_y + lane_height + lane_gap;
+    }
+
+    jobs = [];
+    tooltips = [];
+    windows = [];
+
+    for (i = 0; i < Object.keys(tasks).length; i++) {
+      jobs[i] = new Job(tasks[i], i);
+      windows[i] = new timewindow(tasks[i])
+      tooltips[i] = new tooltip(tasks[i])
+    }
+
+
+
+    resizeCanvas(canvas_width, canvas_height);
+    centerCanvas();
+
+    weekSelect.position(canvas_right + 20, 110);
+    monthSelect.position(canvas_right + 20, 140);
+    yearSelect.position(canvas_right + 20, 170);
+    allSelect.position(canvas_right + 20, 200);
+    prev_period.position(canvas_right + 20, 230);
+    next_period.position(canvas_right + 80, 230);
+    task_text.position(canvas_right + 20, 270);
+    lane_text.position(canvas_right + 20, 330);
+    task_input.position(canvas_right + 20, 290);
+    task_btn.position(canvas_right + 60, 290);
+    lane_input.position(canvas_right + 20, 350);
+    height_slider.position(canvas_right + 20, 380)
+    width_slider.position(canvas_right+20, 410);
+
+    var top_dist = top_lane - temp_lane;
+    vertScroll(-top_dist * 100);
+
+    // Forces the canvas to be redrawn
+    // otherwise it lags between resizing and redrawing
+    redraw();
+  }
+
+
+  // Scoll Lanes
+  // NOTE: mouseWheel event.delta are multiples of 100 (+/-)
+  // (event.delta/100)*(lane_gap + lane_height) => scrolls by one lane at a time
+
+  function mouseWheel(event) {
+    // If alt key is not held while scrolling
+    // Scroll Vertically
+    if (event.altKey == false) {
+      vertScroll(event.delta);
+    }
+
+    // If alt key is held while scrolling
+    // Scroll Horizontally
+    else {
+      if (event.delta < 0 && time_range[0] - 1 >= 0) {
+        prevPeriod(1);
+      }
+      if (event.delta > 0 && time_range[1] + 1 <= 500) {
+        nextPeriod(1);
+      }
+    }
+  }
+
+  function mousePressed() {
+
+    // Start dragging the unused job
+      for (i = 0; i < jobs.length; i++) {
+        if (jobs[i].mouseover && jobs[i].fixed != true && task_dragging==false) {
+          task_dragging = true;
+          dragging_id = i;
+
+          temp_task = Object.assign({},jobs[i]);
+          temp_window = Object.assign({},windows[i]);
+          temp_tooltip = Object.assign({},tooltips[i]);
+
+          jobs[i].dragging = true;
+
+          // store the position the mouse clicked on the box to
+          // keep track of where the box is relative to the mouse
+          jobs[i].xoff = jobs[i].x * task_scale - mouseX;
+          jobs[i].yoff = jobs[i].y * task_scale - mouseY;
+        }
+      }
+    }
+
+  function mouseReleased() {
+    var same_lane = sameLane(jobs[dragging_id]);
+    var hits = [];
+    var use_alt = true;
+    for (let j of same_lane) {
+      if (jobs[dragging_id].intersects(j)){
+        hits.push(j);
+        if (j.fixed == true){
+          use_alt = false;
+        }
+      }
+    }
+
+    if (hits.length == 0 || (keyIsDown(ALT) && use_alt)){
+      jobs[dragging_id].dragging = false;
+      if (keyIsDown(ALT)){
+          jobs[dragging_id].fixed = true;
+          windows[dragging_id].win_start = jobs[dragging_id].x;
+          windows[dragging_id].win_end = jobs[dragging_id].x+jobs[dragging_id].w;
+          tooltips[dragging_id].win_start = jobs[dragging_id].x;
+          tooltips[dragging_id].win_end = jobs[dragging_id].x+jobs[dragging_id].w;
+      }
+      task_dragging = false;
+      var task_end = parseInt(jobs[dragging_id].x) + parseInt(jobs[dragging_id].w);
+
+      $.ajax({
+          url: "/moveTask/" + tooltips[dragging_id].resource + "/" + jobs[dragging_id].djangoID + "/" + jobs[dragging_id].x + "/" + task_end,
+          type: "POST",
+          data: {
+              'csrfmiddlewaretoken': "{{  csrf_token  }}"
+          }
+          })
+
+      console.log(hits)
+      if (hits.length != 0){
+        for (i=0;i<hits.length;i++){
+          console.log(hits[i].djangoID)
+          $.ajax({
+              url: "/moveTask/" + -1 + "/" + hits[i].djangoID + "/" + 0 + "/" + 0,
+              type: "POST",
+              data: {
+                  'csrfmiddlewaretoken': "{{  csrf_token  }}"
+              }
+              })
+          removeTask(jobs, hits[i]);
+          removed_tasks.push(hits[i]);
+        }
+      }
+    }
+
+    else {
+      task_dragging = false;
+      jobs[dragging_id].dragging = false;
+
+      jobs[dragging_id].x = temp_task.x;
+      jobs[dragging_id].y = temp_task.y;
+      windows[dragging_id].y = temp_window.y;
+      tooltips[dragging_id].start = temp_tooltip.start;
+      tooltips[dragging_id].end = temp_tooltip.end;
+      tooltips[dragging_id].y = temp_tooltip.y;
+    }
+  }
+
+
+  // ____________________________________________________________________________________________
+  //  #################################### OBJECT DEFINITIONS ###################################
+  // ____________________________________________________________________________________________
+
+  // #################
+  //  LANE OBJECTS:
+  // ################
+
+  class Lane {
+    constructor(tempID, tempy) {
+      this.x = 0;
+      this.y = tempy;
+      this.w = canvas_width;
+      this.strokeWeight = 2;
+      this.mouseover = false;
+      this.fill = 'white'
+      this.ID = tempID.toString();
+      this.found = false;
+      this.label = createP(`Lane ${this.ID}`)
+      this.label.position(canvas.x-60,this.y+110)
+      this.label.style('width','40')
+      this.label.id("label")
+    }
+
+    // function to check if the mouse is over top of the lane
+    mouseOn() {
+      if (mouseX > this.x && mouseX < this.x + this.w &&
+        mouseY > this.y && mouseY < this.y + lane_height) {
+        this.strokeWeight = 3;
+        this.fill = '#fcffcc';
+        this.found = false;
+        this.mouseover = true;
+      } else {
+        if (this.found == false) {
+          this.fill = 'white';
+          this.strokeWeight = 2;
+          this.mouseover = false;
+        }
+      }
+    }
+
+    // how the lanes are all displayed
+    show() {
+      stroke('#222222');
+      strokeWeight(this.strokeWeight);
+      fill(this.fill);
+      rect(this.x, this.y, this.w, lane_height);
+
+    }
+  }
+
+
+  // #################
+  //   JOB OBJECTS:
+  // ################
+
+  class Job {
+    // Bassically just converts the JSON data into an javascript object
+    constructor(task, id) {
+      this.w = task.length;
+      this.x = task.start;
+      this.y = (task.resources - 1) * (lane_height + lane_gap) + 5;
+      this.id = id;
+      this.djangoID = task.id;
+      this.strokeWeight = 1;
+      this.fill = '#1faf00'
+      this.fixed = task.fixed;
+      this.found = false;
+
+      this.mouseover = false;
+      this.dragging = false;
+      this.xoff = 0;
+      this.yoff = 0;
+    }
+
+    // is the mouse over the used job
+    mouseOn() {
+      if (task_dragging == false) {
+        if (mouseX > (this.x - time_range[0]) * task_scale && mouseX < (this.x - time_range[0]) * task_scale + this.w * task_scale &&
+          mouseY > this.y && mouseY < this.y + lane_height) {
+          this.strokeWeight = 4;
+          this.fill = '#2eff00';
+          windows[this.id].show();
+          tooltips[this.id].show();
+          this.mouseover = true;
+          this.found = false;
+        } else {
+          if (this.found == false) {
+            this.strokeWeight = 2;
+            this.fill = '#1faf00';
+            this.mouseover = false;
+          }
+        }
+      } else {
+        if (mouseX > (this.x - time_range[0]) * task_scale && mouseX < (this.x - time_range[0]) * task_scale + this.w * task_scale &&
+          mouseY > this.y && mouseY < this.y + lane_height) {
+          this.mouseover = true;
+        } else {
+          this.mouseover = false;
+        }
+      }
+    }
+
+
+    // Defines how used jobs are displayed
+    show() {
+      stroke(1);
+      strokeWeight(this.strokeWeight / task_scale);
+
+      if (this.fixed && this.mouseover == false && this.found == false) {
+        this.fill = '#c60000';
+      }
+
+      if (this.fixed && this.mouseover == true && this.found == false && task_dragging == false) {
+        this.fill = '#ff0000'
+      }
+
+      fill(this.fill);
+      push();
+      scale(task_scale, 1);
+      translate(-time_range[0], 0)
+      rect(this.x, this.y, this.w, lane_height)
+      pop();
+
+    }
+
+
+    intersects(other) {
+      var selected_start = this.x |0;
+      var selected_end = this.x+this.w |0;
+
+      var other_start = other.x |0;
+      var other_end = other.x + other.w |0;
+
+      var overlap = [];
+
+      for (i=selected_start; i<selected_end; i++){
+        for (j=other_start; j<other_end; j++){
+          if (i==j){
+            overlap.push(j);
+          }
+        }
+      }
+
+      if (overlap.length == 0){
+        return false
+      }
+      else{
+        return true
+      }
+    }
+  }
+
+  // ####################
+  // TIME WINDOW OBJECTS:
+  // ###################
+
+  // Describes how the time window rectangle are drawn
+  class timewindow {
+    constructor(task) {
+      this.win_start = task.least_start;
+      this.win_end = task.max_end;
+      this.y = (task.resources - 1) * (lane_height + lane_gap) + 5;
+    }
+
+    show() {
+      stroke(0);
+      strokeWeight(1);
+      fill('#009dff')
+      rect((this.win_start - time_range[0]) * task_scale, this.y + lane_height / 4, (this.win_end - this.win_start) * task_scale, lane_height / 2);
+    }
+  }
+
+
+  // ####################
+  //   TOOLTIP OBJECTS:
+  // ###################
+  //describes how the tooltips are handled
+  class tooltip {
+    constructor(task) {
+      this.win_start = task.least_start;
+      this.win_end = task.max_end;
+      this.fixed = task.fixed;
+      this.length = task.length;
+      this.start = task.start;
+      this.end = task.end;
+      this.name = task.name;
+      this.resource = task.resources
+      this.y = (task.resources - 1) * (lane_height + lane_gap) + 5;
+      this.offX = 30;
+      this.offY = 40;
+    }
+
+    show() {
+      // if you can draw the text box to the right of the mouse
+      if (mouseX + 230 < canvas_width) {
+        // if you can draw the text box below the mouse
+        if (mouseY + 150 < canvas_height) {
+          line(((this.start + (.5 * this.length)) - time_range[0]) * task_scale, this.y + lane_height / 4, mouseX + this.offX, mouseY + this.offY);
+          makeToolTip(this);
+        }
+        // otherwise draw the text box above the mouse
+        else {
+          line(((this.start + (.5 * this.length)) - time_range[0]) * task_scale, this.y + lane_height / 4, mouseX + this.offX, mouseY + this.offY);
+          this.offY = -40;
+          translate(0, -150);
+          makeToolTip(this);
+        }
+      }
+
+      // otherwise draw the text box to the left of the mouse
+      else {
+        // if you can draw the text box below the mouse
+        if (mouseY + 150 < canvas_height) {
+          line(((this.start + (.5 * this.length)) - time_range[0]) * task_scale, this.y + lane_height / 4, mouseX + this.offX, mouseY + this.offY);
+          this.offX = -30;
+          translate(-230, 0);
+          makeToolTip(this);
+        }
+        // otherwise draw the text box above the mouse
+        else {
+          line(((this.start + (.5 * this.length)) - time_range[0]) * task_scale, this.y + lane_height / 4, mouseX + this.offX, mouseY + this.offY);
+          this.offX = -30;
+          this.offY = -40;
+          translate(-230, -150)
+          makeToolTip(this);
+        }
+      }
+    }
+  }
+
+
+  // ____________________________________________________________________________________________
+  // ##################################### UTILITY FUNCTIONS ####################################
+  // ____________________________________________________________________________________________
+
+  // #################
+  // BUTTON FUNCTIONS:
+  // ################
+
+  // Sets the Time Scale to a 7 day period
+  // Called on click of "Weekly View" btn
+  function weekScale() {
+    time_range = [0, 7];
+    range_len = 7;
+  }
+
+  // Sets the Time Scale to a 31 day period
+  // Called on click of "Monthly View" btn
+  function monthScale() {
+    time_range = [0, 31];
+    range_len = 31;
+  }
+
+  // Sets the Time Scale to a 365 day period
+  // Called on click of "Yearly View" btn
+  function yearScale() {
+    time_range = [0, 365];
+    range_len = 365;
+  }
+
+  // Sets the Time Scale to max period
+  // Called on click of "View All" btn
+  function fullScale() {
+    time_range = [0, 500];
+    range_len = 500;
+  }
+
+
+  // Subtracts 1 Period Length from the current View
+  // Called on click of "<" btn
+  function prevPeriod(event, r = range_len) {
+    if (time_range[0] - r >= 0) {
+      time_range[0] -= r;
+      time_range[1] -= r;
+    } else {
+      time_range[0] = -10;
+      time_range[1] = -10 + r;
+    }
+  }
+
+  // Adds 1 Period Length from the current View
+  // Called on click of ">" btn
+  function nextPeriod(event, r = range_len) {
+    if (time_range[1] + r <= 500) {
+      time_range[0] += r;
+      time_range[1] += r;
+    } else {
+      time_range[0] = 510 - r;
+      time_range[1] = 510;
+    }
+  }
+
+
+  // #################
+  // CANVAS FUNCTIONS:
+  // ################
+
+  // Centers The Canvas And btns to screen
+  // 140 = far right side of buttons
+  function centerCanvas() {
+    var x = (windowWidth - width) / 2;
+    if (x<80){
+      x = 80;
+    }
+    canvas.position(x, 110)
+    canvas_right = x + canvas_width;
+  }
+
+  // Sets the height of the Canvas to max. the number of lanes on the screen
+  function getHeight() {
+    var max = 0;
+    for (i = 0; i < Object.keys(tasks).length; i++) {
+      if (tasks[i].resources > max) {
+        max = tasks[i].resources;
+      }
+    }
+    num_lanes = max;
+
+    if (max_lanes <= num_lanes) {
+      canvas_height = (lane_gap + lane_height) * max_lanes + lane_gap;
+    } else {
+      canvas_height = (lane_gap + lane_height) * num_lanes + lane_gap;
+    }
+  }
+
+  // #################
+  // MISC. FUNCTIONS:
+  // ################
+
+  function vertScroll(amount) {
+    for (i = 0; i < lanes.length; i++) {
+      lanes[i].found = false;
+    }
+
+    for (i = 0; i < jobs.length; i++) {
+      jobs[i].found = false;
+    }
+
+    if (amount < 0) {
+      if (lanes[0].y < 5) {
+        for (let i = 0; i < lanes.length; i++) {
+          lanes[i].y -= (amount / 100) * (lane_gap + lane_height);
+        }
+
+        for (let j = 0; j < jobs.length; j++) {
+          jobs[j].y -= (amount / 100) * (lane_gap + lane_height);
+          windows[j].y -= (amount / 100) * (lane_gap + lane_height);
+          tooltips[j].y -= (amount / 100) * (lane_gap + lane_height);
+        }
+      }
+    }
+
+    if (amount > 0) {
+      if (lanes[num_lanes - 1].y + lane_height + lane_gap > canvas_height) {
+        for (let i = 0; i < lanes.length; i++) {
+          lanes[i].y -= (amount / 100) * (lane_gap + lane_height);
+        }
+        for (let j = 0; j < jobs.length; j++) {
+          jobs[j].y -= (amount / 100) * (lane_gap + lane_height);
+          windows[j].y -= (amount / 100) * (lane_gap + lane_height);
+          tooltips[j].y -= (amount / 100) * (lane_gap + lane_height);
+        }
+      }
+    }
+  }
+
+  function findLane() {
+    var laneID = lane_input.value();
+    var top_dist = top_lane - laneID;
+    vertScroll(-top_dist * 100);
+    lanes[laneID].fill = 'yellow';
+    lanes[laneID].strokeWeight = 4;
+    lanes[laneID].found = true;
+  }
+
+  function findTask() {
+    var task_num = int(task_input.value());
+    console.log(task_num);
+    var laneID = tooltips[task_num - 1].resources - 1;
+    var top_dist = top_lane - laneID;
+    vertScroll(-top_dist * 100);
+    lanes[laneID].fill = 'yellow';
+    lanes[laneID].strokeWeight = 4;
+    lanes[laneID].found = true;
+
+    jobs[task_num - 1].fill = '#ffba26';
+    jobs[task_num - 1].strokeWeight = 4;
+    jobs[task_num - 1].found = true;
+  }
+
+  function sameLane(task) {
+    var laneTasks = [];
+    for (let t of jobs) {
+      if (task.y == t.y && task !== t) {
+        laneTasks.push(t);
+      }
+    }
+    return laneTasks
+  }
+
+
+  // If you scroll fast enough you can scroll past the lanes
+  // this makes sure that doesn't happen
+  function boundScroll() {
+    if (lanes[0].y > 5) {
+      var scroll_error = lanes[0].y - 5;
+      for (i = 0; i < lanes.length; i++) {
+        lanes[i].y -= scroll_error;
+      }
+      for (j = 0; j < jobs.length; j++) {
+        jobs[j].y -= scroll_error;
+        windows[j].y -= scroll_error;
+        tooltips[j].y -= scroll_error;
+      }
+    }
+
+    if (lanes[num_lanes - 1].y + lane_height + lane_gap < canvas_height) {
+      var scroll_error = lanes[num_lanes - 1].y + lane_height + lane_gap - canvas_height;
+      for (i = 0; i < lanes.length; i++) {
+        lanes[i].y -= scroll_error;
+      }
+      for (j = 0; j < jobs.length; j++) {
+        jobs[j].y -= scroll_error;
+        windows[j].y -= scroll_error;
+        tooltips[j].y -= scroll_error;
+      }
+    }
+  }
+
+  // define how to create all the tooltips
+  function makeToolTip(task) {
+    stroke(0)
+    strokeWeight(1);
+    fill(255);
+    // Actual Rectangle
+    rect(mouseX + task.offX, mouseY + task.offY, 230, 150)
+
+    fill(0);
+    textSize(32);
+    textAlign(CENTER);
+    // Task Name and underline
+    text(`${task.name}`, mouseX + task.offX, mouseY + task.offY, 230, 150)
+    text('___________', mouseX + task.offX, mouseY + task.offY, 230, 150)
+
+    textSize(12);
+    textAlign(LEFT);
+    textLeading(20);
+    // Task Info
+    text(`Lane: ${task.resource}` + '\nTime Window: ' + `(Start: ${task.win_start} , End: ${task.win_end}) \n` + 'Current Position: ' + `(Start: ${task.start}, End: ${task.end})` + '\nTask Length: ' + `${task.length}` + `\nFixed: ${task.fixed}`,
+      mouseX + 10 + task.offX, mouseY + 40 + task.offY, 230, 150);
+  }
+
+  // used to remove overlaped tasks from the array
+  function removeTask(array, element) {
+    const index = array.indexOf(element);
+
+    if (index !== -1) {
+        array.splice(index, 1);
+    }
+  }
+
+</script>
+{% endblock %}
